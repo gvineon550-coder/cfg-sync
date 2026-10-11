@@ -1,0 +1,38 @@
+name: add-device
+on:
+  workflow_dispatch:
+    inputs:
+      android_id:
+        description: 'ANDROID_ID (hex)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update trusted_devices.json
+        env:
+          AID: ${{ inputs.android_id }}
+        run: |
+          python3 - <<PY
+          import json, os
+          aid = os.environ["AID"].strip()
+          with open("docs/trusted_devices.json", "r", encoding="utf-8") as f:
+              d = json.load(f)
+          if aid not in d.get("devices", []):
+              d.setdefault("devices", []).append(aid)
+          with open("docs/trusted_devices.json", "w", encoding="utf-8") as f:
+              json.dump(d, f, ensure_ascii=False, indent=2)
+          print("added", aid)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/trusted_devices.json
+          git diff --cached --quiet || git commit -m "add device"
+          git push || true
