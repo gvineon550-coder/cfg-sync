@@ -4,16 +4,30 @@ import android.view.ViewGroup
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,7 +42,6 @@ import com.nova.sync.data.HistoryStore
 import com.nova.sync.data.Resolver
 import com.nova.sync.player.PlayerHolder
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -40,25 +53,23 @@ fun PlayerScreen(onBack: () -> Unit) {
         return
     }
 
-    val scope = rememberCoroutineScope()
-    var resolvedUrl by remember { mutableStateOf<String?>(channel.streamUrl) }
+    var resolvedUrl by remember { mutableStateOf(channel.streamUrl) }
     var resolveError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(channel.id) {
         if (resolvedUrl.isNullOrBlank() && !channel.blocked) {
             val u = Resolver.resolveStream(channel.id)
-            if (u.isNullOrBlank()) resolveError = "Поток недоступен"
+            if (u.isNullOrBlank()) resolveError = "Stream unavailable"
             resolvedUrl = u
         }
     }
 
-    val player = remember(channel.id, resolvedUrl) {
-        if (resolvedUrl.isNullOrBlank()) null
+    val player: ExoPlayer? = remember(channel.id, resolvedUrl) {
+        val url = resolvedUrl
+        if (url.isNullOrBlank()) null
         else {
             val httpFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent(
-                    "Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                )
+                .setUserAgent("Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000)
@@ -66,7 +77,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                 .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
                 .build()
                 .apply {
-                    setMediaItem(MediaItem.fromUri(resolvedUrl!!))
+                    setMediaItem(MediaItem.fromUri(url))
                     prepare()
                     playWhenReady = true
                 }
@@ -80,7 +91,6 @@ fun PlayerScreen(onBack: () -> Unit) {
 
     var showOsd by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(true) }
-
     LaunchedEffect(showOsd, isPlaying) {
         if (showOsd) { delay(4000); showOsd = false }
     }
@@ -124,7 +134,6 @@ fun PlayerScreen(onBack: () -> Unit) {
             AndroidView(
                 factory = { c ->
                     PlayerView(c).apply {
-                        this.player = player
                         useController = false
                         keepScreenOn = true
                         layoutParams = ViewGroup.LayoutParams(
@@ -133,15 +142,13 @@ fun PlayerScreen(onBack: () -> Unit) {
                         )
                     }
                 },
+                update = { view -> view.player = player },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(
-                    resolveError ?: "Загрузка...",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                )
+                Text(resolveError ?: "Loading...", color = Color.White,
+                    style = MaterialTheme.typography.titleLarge)
             }
         }
 
@@ -153,23 +160,16 @@ fun PlayerScreen(onBack: () -> Unit) {
                     .background(Color(0xCC000000))
                     .padding(24.dp)
             ) {
-                Column(Modifier.weight(1f)) {
+                Column {
+                    Text(channel.title.ifBlank { channel.id }, color = Color.White,
+                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        channel.title.ifBlank { channel.id },
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        if (isPlaying) "▶ OK — пауза · ← → — ±10 сек · Back — выход"
-                        else "⏸ OK — продолжить",
-                        color = Color(0xFFB8C4D8),
+                        if (isPlaying) "OK - pause / arrows - +-10s / Back - exit"
+                        else "OK - resume",
+                        color = Color(0xFFB8C4D8)
                     )
                 }
             }
         }
     }
-
-    // silence unused warning if not consumed
-    scope.launch { }
 }
