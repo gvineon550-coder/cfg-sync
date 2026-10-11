@@ -68,7 +68,12 @@ fun ChannelsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(state.channels, key = { it.id }) { ch ->
-                    ChannelCard(ch, onClick = { onChannelClick(ch) })
+                    ChannelCard(
+                        channel = ch,
+                        isFav = ch.id in state.favorites,
+                        onClick = { onChannelClick(ch) },
+                        onToggleFav = { vm.toggleFavorite(ch.id) },
+                    )
                 }
             }
         }

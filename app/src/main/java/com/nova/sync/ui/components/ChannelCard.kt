@@ -1,8 +1,13 @@
 package com.nova.sync.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +25,12 @@ import com.nova.sync.data.Channel
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun ChannelCard(channel: Channel, onClick: () -> Unit) {
+fun ChannelCard(
+    channel: Channel,
+    isFav: Boolean,
+    onClick: () -> Unit,
+    onToggleFav: () -> Unit,
+) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -47,7 +57,9 @@ fun ChannelCard(channel: Channel, onClick: () -> Unit) {
                         .background(Color(0xFF2A2A2A))
                 )
             }
+
             Spacer(Modifier.width(18.dp))
+
             Column(Modifier.weight(1f)) {
                 Text(
                     channel.title.ifBlank { channel.id },
@@ -59,6 +71,21 @@ fun ChannelCard(channel: Channel, onClick: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(channel.category, color = Color(0xFF9AA0A6))
                 }
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0x22FFFFFF))
+                    .clickable { onToggleFav() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (isFav) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                    contentDescription = if (isFav) "Убрать" else "В избранное",
+                    tint = if (isFav) Color(0xFFFFD24D) else Color(0xFF9AA0A6),
+                )
             }
         }
     }

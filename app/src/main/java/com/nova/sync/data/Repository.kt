@@ -16,6 +16,8 @@ object Repository {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    @Volatile private var cached: Catalog? = null
+
     suspend fun loadCatalog(): Result<Catalog> = withContext(Dispatchers.IO) {
         runCatching {
             val url = NativeStrings.pagesBase + "c.json"
@@ -28,8 +30,13 @@ object Repository {
             client.newCall(req).execute().use { resp ->
                 require(resp.isSuccessful) { "HTTP ${resp.code}" }
                 val body = resp.body?.string().orEmpty()
-                json.decodeFromString<Catalog>(body)
+                val cat = json.decodeFromString<Catalog>(body)
+                cached = cat
+                cat
             }
         }
     }
+
+    fun channels(): List<Channel> = cached?.channels ?: emptyList()
+    fun channelById(id: String): Channel? = cached?.channels?.firstOrNull { it.id == id }
 }

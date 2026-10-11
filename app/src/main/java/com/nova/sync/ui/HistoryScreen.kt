@@ -50,7 +50,14 @@ fun HistoryScreen(
             Text("Пусто", color = Color(0xFF9AA0A6))
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(list, key = { it.id }) { ch -> ChannelCard(ch, onClick = { onChannelClick(ch) }) }
+                items(list, key = { it.id }) { ch ->
+                    ChannelCard(
+                        channel = ch,
+                        isFav = ch.id in state.favorites,
+                        onClick = { onChannelClick(ch) },
+                        onToggleFav = { vm.toggleFavorite(ch.id) },
+                    )
+                }
             }
         }
     }
