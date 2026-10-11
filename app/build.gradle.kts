@@ -22,8 +22,8 @@ android {
         create("release") {
             val b64 = System.getenv("SGN_B64")
             if (!b64.isNullOrBlank()) {
-                val f = File(rootDir, "keystore.jks")
-                f.writeBytes(android.util.Base64.decode(b64, android.util.Base64.DEFAULT))
+                val f = File(project.rootDir, "keystore.jks")
+                f.writeBytes(java.util.Base64.getDecoder().decode(b64))
                 storeFile = f
                 storePassword = System.getenv("SGN_P1")
                 keyAlias = System.getenv("SGN_K")
