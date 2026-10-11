@@ -13,6 +13,7 @@ object TrustedDeviceStore {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     @Volatile private var cache: Set<String>? = null
@@ -20,7 +21,12 @@ object TrustedDeviceStore {
     suspend fun refresh() = withContext(Dispatchers.IO) {
         runCatching {
             val url = NativeStrings.pagesBase + "trusted_devices.json"
-            val req = Request.Builder().url(url).build()
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", NativeStrings.uaMobile)
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                .build()
             client.newCall(req).execute().use { resp ->
                 require(resp.isSuccessful) { "HTTP ${resp.code}" }
                 val body = resp.body?.string().orEmpty()

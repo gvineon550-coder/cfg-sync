@@ -19,7 +19,12 @@ object Repository {
     suspend fun loadCatalog(): Result<Catalog> = withContext(Dispatchers.IO) {
         runCatching {
             val url = NativeStrings.pagesBase + "c.json"
-            val req = Request.Builder().url(url).build()
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", NativeStrings.uaMobile)
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                .build()
             client.newCall(req).execute().use { resp ->
                 require(resp.isSuccessful) { "HTTP ${resp.code}" }
                 val body = resp.body?.string().orEmpty()

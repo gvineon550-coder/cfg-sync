@@ -38,6 +38,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import com.nova.sync.NativeStrings
 import com.nova.sync.data.HistoryStore
 import com.nova.sync.data.Resolver
 import com.nova.sync.player.PlayerHolder
@@ -59,7 +60,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     LaunchedEffect(channel.id) {
         if (resolvedUrl.isNullOrBlank() && !channel.blocked) {
             val u = Resolver.resolveStream(channel.id)
-            if (u.isNullOrBlank()) resolveError = "Stream unavailable"
+            if (u.isNullOrBlank()) resolveError = "Поток недоступен"
             resolvedUrl = u
         }
     }
@@ -69,7 +70,7 @@ fun PlayerScreen(onBack: () -> Unit) {
         if (url.isNullOrBlank()) null
         else {
             val httpFactory = DefaultHttpDataSource.Factory()
-                .setUserAgent("Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .setUserAgent(NativeStrings.uaMobile)
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000)
@@ -147,7 +148,7 @@ fun PlayerScreen(onBack: () -> Unit) {
             )
         } else {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(resolveError ?: "Loading...", color = Color.White,
+                Text(resolveError ?: "Загрузка...", color = Color.White,
                     style = MaterialTheme.typography.titleLarge)
             }
         }
@@ -164,8 +165,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Text(channel.title.ifBlank { channel.id }, color = Color.White,
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        if (isPlaying) "OK - pause / arrows - +-10s / Back - exit"
-                        else "OK - resume",
+                        if (isPlaying) "OK — пауза / ← → — ±10 сек / Back — выход"
+                        else "OK — продолжить",
                         color = Color(0xFFB8C4D8)
                     )
                 }

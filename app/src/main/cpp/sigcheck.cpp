@@ -18,6 +18,16 @@ static const unsigned char kPlayTpl[] = {
     0x32,0x34,0x35,0x28,0x74,0x7E,0x28,0x74
 };
 
+static const char* kUaDesktop =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36";
+
+static const char* kUaMobile =
+    "Mozilla/5.0 (Linux; Android 13) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Mobile Safari/537.36";
+
 static std::string decode(const unsigned char* data, size_t len) {
     std::string out;
     out.reserve(len);
@@ -28,8 +38,6 @@ static std::string decode(const unsigned char* data, size_t len) {
 }
 
 static bool isTampered() {
-    // Only scan /proc/self/maps for known instrumentation.
-    // No ptrace() — it returns -1 on legit Android 10+ due to SELinux.
     FILE* f = fopen("/proc/self/maps", "r");
     if (!f) return false;
     char line[512];
@@ -57,6 +65,13 @@ Java_com_nova_sync_NativeStrings_nativeUrl(JNIEnv* env, jobject, jint idx) {
         std::string s = decode(kPlayTpl, sizeof(kPlayTpl));
         return env->NewStringUTF(s.c_str());
     }
+    return nullptr;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_nova_sync_NativeStrings_nativeUa(JNIEnv* env, jobject, jint idx) {
+    if (idx == 0) return env->NewStringUTF(kUaDesktop);
+    if (idx == 1) return env->NewStringUTF(kUaMobile);
     return nullptr;
 }
 

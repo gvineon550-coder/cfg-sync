@@ -16,6 +16,7 @@ object Resolver {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     suspend fun resolveStream(channelId: String): String? = withContext(Dispatchers.IO) {
@@ -25,11 +26,11 @@ object Resolver {
             val url = tpl.replace("%s", channelId)
             val req = Request.Builder()
                 .url(url)
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                )
+                .header("User-Agent", NativeStrings.uaMobile)
                 .header("Referer", "https://rutube.ru/")
+                .header("Origin", "https://rutube.ru")
+                .header("Accept", "*/*")
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
                 .build()
             client.newCall(req).execute().use { resp ->
                 require(resp.isSuccessful) { "HTTP ${resp.code}" }

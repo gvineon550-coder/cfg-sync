@@ -7,13 +7,19 @@ try:
 except ImportError:
     print("ERROR: requests not installed"); sys.exit(1)
 
-UA = ("Mozilla/5.0 (Linux; Android TV) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/122.0.0.0 Safari/537.36")
 BASE = "https://rutube.ru"
 HEADERS = {
-    "User-Agent": UA, "Referer": "https://rutube.ru/",
-    "Origin": "https://rutube.ru", "Accept": "*/*",
+    "User-Agent": UA,
+    "Referer": "https://rutube.ru/",
+    "Origin": "https://rutube.ru",
+    "Accept": "application/json, text/plain, */*",
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 TITLE_PREFIX = "Прямой эфир"
 CATEGORY_RENAMES = {"Все прямые эфиры": "Прямые эфиры", "Новости и СМИ": "Новости"}
@@ -146,7 +152,6 @@ def enrich(ch):
     if is_blocked(resp):
         ch["blocked"] = True; ch["blocked_reason"] = blocked_reason(resp); return
 
-    # avatar: prefer thumbnail_url.hq, fallback author.avatar_url
     thumb = resp.get("thumbnail_url")
     if isinstance(thumb, dict):
         ch["avatar"] = thumb.get("hq") or thumb.get("original") or ""
