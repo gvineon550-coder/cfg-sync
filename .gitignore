@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.kotlin/
+keystore.jks
+keystore.b64
+sgn-secrets.txt
+sha.txt
+*.jks
+*.keystore
+.cxx/

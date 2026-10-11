@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project("sigcheck")
+add_library(sigcheck SHARED sigcheck.cpp)
+find_library(log-lib log)
+target_link_libraries(sigcheck ${log-lib})
