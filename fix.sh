@@ -281,7 +281,7 @@ fun PlayerScreen(onBack: () -> Unit) {
     LaunchedEffect(channel.id) {
         if (resolvedUrl.isNullOrBlank() && !channel.blocked) {
             val u = Resolver.resolveStream(channel.id)
-            if (u.isNullOrBlank()) resolveError = "Поток недоступен"
+            if (u.isNullOrBlank()) resolveError = "Stream unavailable"
             resolvedUrl = u
         }
     }
@@ -369,7 +369,7 @@ fun PlayerScreen(onBack: () -> Unit) {
             )
         } else {
             Box(Modifier.fillMaxSize(), Alignment.Center) {
-                Text(resolveError ?: "Загрузка...", color = Color.White,
+                Text(resolveError ?: "Loading...", color = Color.White,
                     style = MaterialTheme.typography.titleLarge)
             }
         }
@@ -386,8 +386,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Text(channel.title.ifBlank { channel.id }, color = Color.White,
                         style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        if (isPlaying) "OK — пауза / ← → — ±10 сек / Back — выход"
-                        else "OK — продолжить",
+                        if (isPlaying) "OK - pause / arrows - +-10s / Back - exit"
+                        else "OK - resume",
                         color = Color(0xFFB8C4D8)
                     )
                 }
@@ -398,6 +398,9 @@ fun PlayerScreen(onBack: () -> Unit) {
 XEOF
 
 # ============ 7. Иконки без градиента ============
+mkdir -p app/src/main/res/drawable
+mkdir -p app/src/main/res/mipmap-anydpi
+
 cat > app/src/main/res/drawable/ic_launcher_background.xml << 'XEOF'
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -460,63 +463,6 @@ cat > app/src/main/res/mipmap-anydpi/ic_launcher_round.xml << 'XEOF'
             android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z"/>
     </group>
 </vector>
-XEOF
-
-# ============ 8. build.yml ============
-mkdir -p .github/workflows
-cat > .github/workflows/build.yml << 'XEOF'
-name: build
-on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'app/**'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - '.github/workflows/build.yml'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  apk:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Ensure gradle wrapper
-        run: |
-          if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version 8.9 --distribution-type all
-          fi
-          chmod +x gradlew
-      - name: Build
-        env:
-          SGN_B64: ${{ secrets.SGN_B64 }}
-          SGN_P1: ${{ secrets.SGN_P1 }}
-          SGN_K: ${{ secrets.SGN_K }}
-        run: |
-          if [ -z "${SGN_B64:-}" ]; then
-            ./gradlew assembleDebug --stacktrace
-            mkdir -p out && cp app/build/outputs/apk/debug/*.apk out/App.apk
-          else
-            ./gradlew assembleRelease --stacktrace
-            mkdir -p out && cp app/build/outputs/apk/release/*.apk out/App.apk
-          fi
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Sync (latest)"
-          files: out/App.apk
-          make_latest: true
 XEOF
 
 echo "=== fix applied ==="
