@@ -1,0 +1,26 @@
+name: extract-b64
+on: workflow_dispatch
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate
+        env:
+          P1: ${{ secrets.SGN_P1 }}
+          K:  ${{ secrets.SGN_K }}
+        run: |
+          set -e
+          keytool -genkeypair -keystore keystore.jks -alias "$K" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$P1" -keypass "$P1" \
+            -dname "CN=App, O=App, C=US"
+          SHA=$(keytool -list -v -keystore keystore.jks -alias "$K" -storepass "$P1" \
+                | grep -i SHA256 | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+          base64 -w0 keystore.jks > keystore.b64
+          echo "SHA256=$SHA"
+          wc -c keystore.b64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b64
+          path: keystore.b64
