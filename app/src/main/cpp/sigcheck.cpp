@@ -3,8 +3,6 @@
 #include <cstring>
 #include <cstdint>
 #include <cstdio>
-#include <unistd.h>
-#include <sys/ptrace.h>
 
 static const unsigned char kKey = 0x5B;
 
@@ -30,14 +28,17 @@ static std::string decode(const unsigned char* data, size_t len) {
 }
 
 static bool isTampered() {
-    if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) == -1) return true;
+    // Only scan /proc/self/maps for known instrumentation.
+    // No ptrace() — it returns -1 on legit Android 10+ due to SELinux.
     FILE* f = fopen("/proc/self/maps", "r");
     if (!f) return false;
     char line[512];
     bool bad = false;
     while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, "frida") || strstr(line, "magisk") ||
-            strstr(line, "xposed") || strstr(line, "substrate")) {
+        if (strstr(line, "frida") ||
+            strstr(line, "magisk") ||
+            strstr(line, "xposed") ||
+            strstr(line, "substrate")) {
             bad = true;
             break;
         }
