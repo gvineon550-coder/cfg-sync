@@ -2,9 +2,13 @@ name: build
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
+    paths:
+      - 'app/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,11 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
       - name: Ensure gradle wrapper
         run: |
           if [ ! -f gradlew ]; then
@@ -27,6 +36,7 @@ jobs:
             gradle wrapper --gradle-version 8.9 --distribution-type all || true
           fi
           chmod +x gradlew || true
+
       - name: Build
         env:
           SGN_B64: ${{ secrets.SGN_B64 }}
@@ -40,6 +50,7 @@ jobs:
             ./gradlew assembleRelease --stacktrace
             mkdir -p out && cp app/build/outputs/apk/release/*.apk out/App.apk
           fi
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
