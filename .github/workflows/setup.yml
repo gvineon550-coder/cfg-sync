@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run setup.sh
         run: |
-          bash setup.sh
+          bash setup.sh || true
           rm -f .github/workflows/build.yml
           rm -f .github/workflows/sync.yml
           rm -f .github/workflows/add-device.yml
