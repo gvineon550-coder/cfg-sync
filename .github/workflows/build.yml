@@ -7,7 +7,6 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
-      - 'gradlew'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -25,17 +24,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Accept Android SDK licenses
-        run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Ensure gradle wrapper
         run: |
           if [ ! -f gradlew ]; then
-            sudo apt-get update && sudo apt-get install -y gradle || true
-            gradle wrapper --gradle-version 8.9 --distribution-type all || true
+            gradle wrapper --gradle-version 8.9 --distribution-type all
           fi
-          chmod +x gradlew || true
+          chmod +x gradlew
 
       - name: Build
         env:
