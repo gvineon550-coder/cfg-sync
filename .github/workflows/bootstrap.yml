@@ -1,0 +1,39 @@
+name: bootstrap
+on: workflow_dispatch
+
+permissions:
+  contents: write
+  secrets: write
+  actions: write
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and upload secrets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          P1=$(head -c32 /dev/urandom | base64 | tr -d '/+=' | head -c20)
+          P2=$(head -c32 /dev/urandom | base64 | tr -d '/+=' | head -c20)
+          keytool -genkeypair -keystore keystore.jks -alias k1 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$P1" -keypass "$P2" \
+            -dname "CN=App, O=App, C=US"
+          SHA=$(keytool -list -v -keystore keystore.jks -alias k1 -storepass "$P1" \
+                | grep -i SHA256 | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+          B64=$(base64 -w0 keystore.jks)
+          printf '%s' "$B64" | gh secret set SGN_B64 -R "$REPO"
+          printf '%s' "$P1"  | gh secret set SGN_P1  -R "$REPO"
+          printf '%s' "$P2"  | gh secret set SGN_P2  -R "$REPO"
+          printf '%s' "k1"   | gh secret set SGN_K   -R "$REPO"
+          mkdir -p out
+          printf '%s\n' "$SHA" > out/sha256.txt
+          echo "OK: secrets uploaded, sha256 saved to artifact"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sha256
+          path: out/sha256.txt
