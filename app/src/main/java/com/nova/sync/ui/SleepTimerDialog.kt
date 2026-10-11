@@ -11,11 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,49 +50,65 @@ fun SleepTimerOverlay(
     onSelect: (Long) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        // даём композиции собраться, потом просим фокус
+        kotlinx.coroutines.delay(50)
+        runCatching { firstFocus.requestFocus() }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xE6000000)),
         contentAlignment = Alignment.Center,
     ) {
-        Card(onClick = onDismiss) {
-            Column(
-                modifier = Modifier
-                    .background(Color(0xFF141414))
-                    .padding(28.dp)
-                    .width(520.dp)
-            ) {
-                Text(
-                    "Таймер сна",
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text("Приложение закроется по истечении", color = Color(0xFF9AA0A6))
-                Spacer(Modifier.height(20.dp))
+        Column(
+            modifier = Modifier
+                .background(Color(0xFF141414), RoundedCornerShape(16.dp))
+                .padding(28.dp)
+                .width(560.dp)
+        ) {
+            Text(
+                "Таймер сна",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text("Приложение закроется по истечении", color = Color(0xFF9AA0A6))
+            Spacer(Modifier.height(20.dp))
 
-                for (row in PRESETS.chunked(3)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        for (p in row) {
-                            PresetButton(
-                                text = p.label,
-                                onClick = { onSelect(p.ms) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+            // Ряд 1: 1/5/15 мин — первая кнопка с focusRequester
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PresetButton(
+                    text = PRESETS[0].label,
+                    onClick = { onSelect(PRESETS[0].ms) },
+                    modifier = Modifier.weight(1f).focusRequester(firstFocus),
+                )
+                PresetButton(PRESETS[1].label, { onSelect(PRESETS[1].ms) }, Modifier.weight(1f))
+                PresetButton(PRESETS[2].label, { onSelect(PRESETS[2].ms) }, Modifier.weight(1f))
+            }
+
+            // Остальные ряды
+            for (row in PRESETS.drop(3).chunked(3)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    for (p in row) {
+                        PresetButton(p.label, { onSelect(p.ms) }, Modifier.weight(1f))
                     }
                 }
+            }
 
-                Spacer(Modifier.height(20.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PresetButton("Отключить", onCancel, Modifier.weight(1f))
-                    PresetButton("Закрыть", onDismiss, Modifier.weight(1f))
-                }
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PresetButton("Отключить", onCancel, Modifier.weight(1f))
+                PresetButton("Закрыть", onDismiss, Modifier.weight(1f))
             }
         }
     }

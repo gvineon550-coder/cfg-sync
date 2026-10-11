@@ -113,13 +113,11 @@ fun PlayerScreen(onBack: () -> Unit) {
     }
 
     var showOsd by remember { mutableStateOf(true) }
-    var isPlaying by remember { mutableStateOf(true) }
     var showListOverlay by remember { mutableStateOf(false) }
     var overlayIndex by remember { mutableIntStateOf(currentIndex) }
     var switchHint by remember { mutableStateOf<String?>(null) }
-    var okHolding by remember { mutableStateOf(false) }
 
-    LaunchedEffect(showOsd, isPlaying, showListOverlay) {
+    LaunchedEffect(showOsd, showListOverlay) {
         if (showOsd && !showListOverlay) {
             delay(4000)
             showOsd = false
@@ -133,17 +131,6 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(okHolding) {
-        if (okHolding) {
-            delay(700)
-            if (okHolding) {
-                showListOverlay = !showListOverlay
-                overlayIndex = currentIndex
-                okHolding = false
-            }
-        }
-    }
-
     fun switchTo(index: Int) {
         if (index in list.indices) {
             currentIndex = index
@@ -152,12 +139,8 @@ fun PlayerScreen(onBack: () -> Unit) {
             resolveError = null
             switchHint = "${index + 1}/${list.size} · ${currentChannel.title.ifBlank { currentChannel.id }}"
             showOsd = true
-            isPlaying = true
         }
     }
-
-    fun prevChannel() { if (currentIndex > 0) switchTo(currentIndex - 1) }
-    fun nextChannel() { if (currentIndex < list.size - 1) switchTo(currentIndex + 1) }
 
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
@@ -177,42 +160,34 @@ fun PlayerScreen(onBack: () -> Unit) {
                             true
                         } else false
                     }
-                    Key.DirectionUp, Key.DirectionRight -> {
-                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if (showListOverlay) {
-                            if (overlayIndex < list.size - 1) overlayIndex++
-                        } else nextChannel()
-                        true
-                    }
-                    Key.DirectionDown, Key.DirectionLeft -> {
+                    Key.DirectionUp, Key.DirectionLeft -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         if (showListOverlay) {
                             if (overlayIndex > 0) overlayIndex--
-                        } else prevChannel()
+                        } else {
+                            if (currentIndex > 0) switchTo(currentIndex - 1)
+                        }
+                        true
+                    }
+                    Key.DirectionDown, Key.DirectionRight -> {
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (showListOverlay) {
+                            if (overlayIndex < list.size - 1) overlayIndex++
+                        } else {
+                            if (currentIndex < list.size - 1) switchTo(currentIndex + 1)
+                        }
                         true
                     }
                     Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
-                        when (e.type) {
-                            KeyEventType.KeyDown -> {
-                                if (!okHolding) okHolding = true
-                                true
-                            }
-                            KeyEventType.KeyUp -> {
-                                if (okHolding) {
-                                    okHolding = false
-                                    if (showListOverlay) {
-                                        switchTo(overlayIndex)
-                                        showListOverlay = false
-                                    } else {
-                                        isPlaying = !isPlaying
-                                        player?.playWhenReady = isPlaying
-                                        showOsd = true
-                                    }
-                                }
-                                true
-                            }
-                            else -> false
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (showListOverlay) {
+                            switchTo(overlayIndex)
+                            showListOverlay = false
+                        } else {
+                            showListOverlay = true
+                            overlayIndex = currentIndex
                         }
+                        true
                     }
                     Key.Back -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -221,8 +196,9 @@ fun PlayerScreen(onBack: () -> Unit) {
                     }
                     Key.MediaPlayPause -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        isPlaying = !isPlaying
-                        player?.playWhenReady = isPlaying
+                        player?.let {
+                            it.playWhenReady = !it.playWhenReady
+                        }
                         true
                     }
                     else -> false
@@ -267,9 +243,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        if (isPlaying)
-                            "OK — пауза · ↑↓ / ←→ — канал · удержание OK — список · Back — выход"
-                        else "OK — продолжить",
+                        "OK — список каналов · ↑↓ ←→ — переключить · ≡ — список · Back — выход",
                         color = Color(0xFFB8C4D8),
                     )
                 }
