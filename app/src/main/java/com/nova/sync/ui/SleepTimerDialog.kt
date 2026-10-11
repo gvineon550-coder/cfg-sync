@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,14 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.Card
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 
@@ -45,20 +40,18 @@ private val PRESETS = listOf(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun SleepTimerDialog(
+fun SleepTimerOverlay(
     onDismiss: () -> Unit,
     onSelect: (Long) -> Unit,
     onCancel: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            onClick = {},
-            modifier = Modifier.onPreviewKeyEvent { e ->
-                if (e.type == KeyEventType.KeyDown && e.key == Key.Back) {
-                    onDismiss(); true
-                } else false
-            }
-        ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xE6000000)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(onClick = onDismiss) {
             Column(
                 modifier = Modifier
                     .background(Color(0xFF141414))

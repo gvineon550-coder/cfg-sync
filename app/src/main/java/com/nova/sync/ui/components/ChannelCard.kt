@@ -1,7 +1,6 @@
 package com.nova.sync.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,19 +72,24 @@ fun ChannelCard(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0x22FFFFFF))
-                    .clickable { onToggleFav() },
-                contentAlignment = Alignment.Center,
+            Spacer(Modifier.width(12.dp))
+
+            Card(
+                onClick = onToggleFav,
+                modifier = Modifier.size(56.dp),
             ) {
-                Icon(
-                    imageVector = if (isFav) Icons.Filled.Star else Icons.Outlined.StarOutline,
-                    contentDescription = if (isFav) "Убрать" else "В избранное",
-                    tint = if (isFav) Color(0xFFFFD24D) else Color(0xFF9AA0A6),
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x22FFFFFF)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (isFav) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                        contentDescription = if (isFav) "Убрать" else "В избранное",
+                        tint = if (isFav) Color(0xFFFFD24D) else Color(0xFF9AA0A6),
+                    )
+                }
             }
         }
     }

@@ -2,6 +2,7 @@ package com.nova.sync.ui
 
 import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,73 +32,75 @@ fun SettingsScreen(onBack: () -> Unit) {
     var showSleepDialog by remember { mutableStateOf(false) }
     val remaining by SleepTimer.remaining.collectAsStateWithLifecycle()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .padding(40.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Настройки",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            TvButton(text = "Назад", onClick = onBack)
-        }
-
-        Spacer(Modifier.height(32.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .padding(40.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Таймер сна",
+                    "Настройки",
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
                 )
-                Text(
-                    remaining?.let { "Осталось: ${formatRemaining(it)}" } ?: "Выключен",
-                    color = Color(0xFF9AA0A6),
+                TvButton(text = "Назад", onClick = onBack)
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Таймер сна",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        remaining?.let { "Осталось: ${formatRemaining(it)}" } ?: "Выключен",
+                        color = Color(0xFF9AA0A6),
+                    )
+                }
+                TvButton(text = "Настроить", onClick = { showSleepDialog = true })
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Выйти из приложения",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text("Полностью закрыть приложение", color = Color(0xFF9AA0A6))
+                }
+                TvButton(
+                    text = "Выйти",
+                    onClick = { (ctx as? Activity)?.finishAndRemoveTask() },
                 )
             }
-            TvButton(text = "Настроить", onClick = { showSleepDialog = true })
+
+            Spacer(Modifier.height(40.dp))
+
+            Text("Версия 1.0.0", color = Color(0xFF9AA0A6))
+            Spacer(Modifier.height(8.dp))
+            Text("Плеер: ExoPlayer / HLS", color = Color(0xFF9AA0A6))
+            Spacer(Modifier.height(8.dp))
+            Text("Источник: Pages / c.json", color = Color(0xFF9AA0A6))
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Выйти из приложения",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text("Полностью закрыть приложение", color = Color(0xFF9AA0A6))
-            }
-            TvButton(
-                text = "Выйти",
-                onClick = { (ctx as? Activity)?.finishAndRemoveTask() },
+        if (showSleepDialog) {
+            SleepTimerOverlay(
+                onDismiss = { showSleepDialog = false },
+                onSelect = { ms -> SleepTimer.set(ms); showSleepDialog = false },
+                onCancel = { SleepTimer.cancel(); showSleepDialog = false },
             )
         }
-
-        Spacer(Modifier.height(40.dp))
-
-        Text("Версия 1.0.0", color = Color(0xFF9AA0A6))
-        Spacer(Modifier.height(8.dp))
-        Text("Плеер: ExoPlayer / HLS", color = Color(0xFF9AA0A6))
-        Spacer(Modifier.height(8.dp))
-        Text("Источник: Pages / c.json", color = Color(0xFF9AA0A6))
-    }
-
-    if (showSleepDialog) {
-        SleepTimerDialog(
-            onDismiss = { showSleepDialog = false },
-            onSelect = { ms -> SleepTimer.set(ms); showSleepDialog = false },
-            onCancel = { SleepTimer.cancel(); showSleepDialog = false },
-        )
     }
 }

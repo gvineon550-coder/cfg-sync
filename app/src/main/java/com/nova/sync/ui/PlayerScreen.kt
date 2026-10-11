@@ -25,7 +25,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -117,8 +116,8 @@ fun PlayerScreen(onBack: () -> Unit) {
     var isPlaying by remember { mutableStateOf(true) }
     var showListOverlay by remember { mutableStateOf(false) }
     var overlayIndex by remember { mutableIntStateOf(currentIndex) }
-    var okDownAt by remember { mutableLongStateOf(0L) }
     var switchHint by remember { mutableStateOf<String?>(null) }
+    var okHolding by remember { mutableStateOf(false) }
 
     LaunchedEffect(showOsd, isPlaying, showListOverlay) {
         if (showOsd && !showListOverlay) {
@@ -131,6 +130,17 @@ fun PlayerScreen(onBack: () -> Unit) {
         if (switchHint != null) {
             delay(1500)
             switchHint = null
+        }
+    }
+
+    LaunchedEffect(okHolding) {
+        if (okHolding) {
+            delay(700)
+            if (okHolding) {
+                showListOverlay = !showListOverlay
+                overlayIndex = currentIndex
+                okHolding = false
+            }
         }
     }
 
@@ -182,21 +192,27 @@ fun PlayerScreen(onBack: () -> Unit) {
                         true
                     }
                     Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
-                        if (e.type == KeyEventType.KeyDown) {
-                            okDownAt = System.currentTimeMillis(); true
-                        } else if (e.type == KeyEventType.KeyUp) {
-                            val dur = System.currentTimeMillis() - okDownAt
-                            if (showListOverlay) {
-                                switchTo(overlayIndex); showListOverlay = false
-                            } else if (dur > 700L) {
-                                showListOverlay = true; overlayIndex = currentIndex
-                            } else {
-                                isPlaying = !isPlaying
-                                player?.playWhenReady = isPlaying
-                                showOsd = true
+                        when (e.type) {
+                            KeyEventType.KeyDown -> {
+                                if (!okHolding) okHolding = true
+                                true
                             }
-                            true
-                        } else false
+                            KeyEventType.KeyUp -> {
+                                if (okHolding) {
+                                    okHolding = false
+                                    if (showListOverlay) {
+                                        switchTo(overlayIndex)
+                                        showListOverlay = false
+                                    } else {
+                                        isPlaying = !isPlaying
+                                        player?.playWhenReady = isPlaying
+                                        showOsd = true
+                                    }
+                                }
+                                true
+                            }
+                            else -> false
+                        }
                     }
                     Key.Back -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
