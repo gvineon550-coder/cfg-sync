@@ -1,0 +1,48 @@
+name: build
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Ensure gradle wrapper
+        run: |
+          if [ ! -f gradlew ]; then
+            sudo apt-get update && sudo apt-get install -y gradle || true
+            gradle wrapper --gradle-version 8.9 --distribution-type all || true
+          fi
+          chmod +x gradlew || true
+      - name: Build
+        env:
+          SGN_B64: ${{ secrets.SGN_B64 }}
+          SGN_P1: ${{ secrets.SGN_P1 }}
+          SGN_K: ${{ secrets.SGN_K }}
+        run: |
+          if [ -z "${SGN_B64:-}" ]; then
+            ./gradlew assembleDebug --stacktrace
+            mkdir -p out && cp app/build/outputs/apk/debug/*.apk out/App.apk
+          else
+            ./gradlew assembleRelease --stacktrace
+            mkdir -p out && cp app/build/outputs/apk/release/*.apk out/App.apk
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Sync (latest)"
+          files: out/App.apk
+          make_latest: true
