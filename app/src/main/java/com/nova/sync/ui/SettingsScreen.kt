@@ -45,7 +45,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
-            TvButton("Назад", onBack)
+            TvButton(text = "Назад", onClick = onBack)
         }
 
         Spacer(Modifier.height(32.dp))
@@ -63,7 +63,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = Color(0xFF9AA0A6),
                 )
             }
-            TvButton("Настроить") { showSleepDialog = true }
+            TvButton(text = "Настроить", onClick = { showSleepDialog = true })
         }
 
         Spacer(Modifier.height(20.dp))
@@ -78,9 +78,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Text("Полностью закрыть приложение", color = Color(0xFF9AA0A6))
             }
-            TvButton("Выйти") {
-                (ctx as? Activity)?.finishAndRemoveTask()
-            }
+            TvButton(
+                text = "Выйти",
+                onClick = { (ctx as? Activity)?.finishAndRemoveTask() },
+            )
         }
 
         Spacer(Modifier.height(40.dp))
