@@ -61,6 +61,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.nova.sync.NativeStrings
+import com.nova.sync.PlayerService
 import com.nova.sync.data.HistoryStore
 import com.nova.sync.data.Repository
 import com.nova.sync.data.Resolver
@@ -97,7 +98,6 @@ fun PlayerScreen(onBack: () -> Unit) {
     var statusText by remember(currentChannel.id) { mutableStateOf<String?>(null) }
     var userPaused by remember(currentChannel.id) { mutableStateOf(false) }
     var lastPausedAt by remember { mutableLongStateOf(0L) }
-    var watchdogRecoveries by remember(currentChannel.id) { mutableIntStateOf(0) }
 
     val wakeLock = remember {
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -146,6 +146,15 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
+    // ---- Запуск Foreground Service при старте плеера ----
+    DisposableEffect(player) {
+        if (player == null) return@DisposableEffect onDispose { }
+        runCatching { PlayerService.start(ctx) }
+        onDispose {
+            runCatching { PlayerService.stop(ctx) }
+        }
+    }
+
     DisposableEffect(player, wakeLock) {
         if (player == null) return@DisposableEffect onDispose { }
         val listener = object : Player.Listener {
@@ -180,6 +189,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                     if (!wakeLock.isHeld) {
                         runCatching { wakeLock.acquire(6 * 60 * 60 * 1000L) }
                     }
+                    // держим сервис активным пока играет
+                    runCatching { PlayerService.start(ctx) }
                 } else {
                     if (wakeLock.isHeld) runCatching { wakeLock.release() }
                 }
@@ -193,7 +204,7 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
-    // ---- WATCHDOG: ловит тихие фризы без onPlayerError ----
+    // ---- WATCHDOG: тихие фризы ----
     LaunchedEffect(player, currentChannel.id) {
         if (player == null) return@LaunchedEffect
         var lastPos = -1L
@@ -211,9 +222,7 @@ fun PlayerScreen(onBack: () -> Unit) {
 
             if (playing && pos == lastPos) {
                 if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
-                val stallMs = System.currentTimeMillis() - stalledSince
-                if (stallMs >= WATCHDOG_STALL_THRESHOLD_MS) {
-                    watchdogRecoveries++
+                if (System.currentTimeMillis() - stalledSince >= WATCHDOG_STALL_THRESHOLD_MS) {
                     statusText = "Перезапуск потока..."
                     runCatching {
                         player.seekToDefaultPosition()
@@ -222,16 +231,12 @@ fun PlayerScreen(onBack: () -> Unit) {
                     }
                     stalledSince = 0L
                     lastPos = -1L
-                    scope.launch {
-                        delay(2_000)
-                        statusText = null
-                    }
+                    scope.launch { delay(2_000); statusText = null }
                 }
             } else {
                 stalledSince = 0L
                 lastPos = pos
             }
-            // если долго буферизуется — тоже лечим
             if (buffering && !playing) {
                 if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
                 if (System.currentTimeMillis() - stalledSince >= WATCHDOG_STALL_THRESHOLD_MS) {
@@ -242,15 +247,13 @@ fun PlayerScreen(onBack: () -> Unit) {
                         player.playWhenReady = true
                     }
                     stalledSince = 0L
-                    scope.launch {
-                        delay(2_000)
-                        statusText = null
-                    }
+                    scope.launch { delay(2_000); statusText = null }
                 }
             }
         }
     }
 
+    // ---- Lifecycle ----
     DisposableEffect(player, lifecycleOwner, currentChannel.id) {
         if (player == null) return@DisposableEffect onDispose { }
         val observer = LifecycleEventObserver { _, event ->
@@ -271,8 +274,11 @@ fun PlayerScreen(onBack: () -> Unit) {
                     } else {
                         if (!userPaused) runCatching { player.play() }
                     }
+                    runCatching { PlayerService.start(ctx) }
                 }
-                Lifecycle.Event.ON_STOP -> runCatching { player.pause() }
+                Lifecycle.Event.ON_STOP -> {
+                    runCatching { player.pause() }
+                }
                 else -> {}
             }
         }
@@ -302,7 +308,6 @@ fun PlayerScreen(onBack: () -> Unit) {
             statusText = null
             userPaused = false
             lastPausedAt = 0L
-            watchdogRecoveries = 0
             switchHint = "${index + 1}/${list.size} · ${currentChannel.title.ifBlank { currentChannel.id }}"
             showOsd = true
         }
@@ -370,6 +375,8 @@ fun PlayerScreen(onBack: () -> Unit) {
                     PlayerView(c).apply {
                         useController = false
                         keepScreenOn = true
+                        // без индикатора буферизации — при провале картинка замирает и продолжает
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT,
