@@ -71,7 +71,8 @@ import kotlinx.coroutines.launch
 
 private const val STALE_POSITION_THRESHOLD_MS = 60 * 1000L
 private const val WATCHDOG_INTERVAL_MS = 2_000L
-private const val WATCHDOG_STALL_THRESHOLD_MS = 10_000L
+private const val WATCHDOG_STALL_THRESHOLD_MS = 12_000L
+private const val WATCHDOG_MAX_ATTEMPTS = 5
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -146,13 +147,10 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
-    // ---- Запуск Foreground Service при старте плеера ----
     DisposableEffect(player) {
         if (player == null) return@DisposableEffect onDispose { }
         runCatching { PlayerService.start(ctx) }
-        onDispose {
-            runCatching { PlayerService.stop(ctx) }
-        }
+        onDispose { runCatching { PlayerService.stop(ctx) } }
     }
 
     DisposableEffect(player, wakeLock) {
@@ -180,7 +178,6 @@ fun PlayerScreen(onBack: () -> Unit) {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
                     retryCount = 0
-                    statusText = null
                 }
             }
 
@@ -189,7 +186,6 @@ fun PlayerScreen(onBack: () -> Unit) {
                     if (!wakeLock.isHeld) {
                         runCatching { wakeLock.acquire(6 * 60 * 60 * 1000L) }
                     }
-                    // держим сервис активным пока играет
                     runCatching { PlayerService.start(ctx) }
                 } else {
                     if (wakeLock.isHeld) runCatching { wakeLock.release() }
@@ -204,56 +200,55 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
-    // ---- WATCHDOG: тихие фризы ----
     LaunchedEffect(player, currentChannel.id) {
         if (player == null) return@LaunchedEffect
         var lastPos = -1L
-        var stalledSince = 0L
+        var badSince = 0L
+        var attempts = 0
+
         while (true) {
             delay(WATCHDOG_INTERVAL_MS)
+
             if (userPaused) {
-                stalledSince = 0L
+                badSince = 0L
                 lastPos = -1L
+                attempts = 0
                 continue
             }
-            val playing = player.isPlaying
-            val buffering = player.playbackState == Player.STATE_BUFFERING
-            val pos = player.currentPosition
 
-            if (playing && pos == lastPos) {
-                if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
-                if (System.currentTimeMillis() - stalledSince >= WATCHDOG_STALL_THRESHOLD_MS) {
-                    statusText = "Перезапуск потока..."
-                    runCatching {
-                        player.seekToDefaultPosition()
-                        player.prepare()
-                        player.playWhenReady = true
-                    }
-                    stalledSince = 0L
-                    lastPos = -1L
-                    scope.launch { delay(2_000); statusText = null }
-                }
-            } else {
-                stalledSince = 0L
+            val playing = player.isPlaying
+            val pos = player.currentPosition
+            val posAdvancing = pos != lastPos
+
+            if (playing && posAdvancing) {
+                badSince = 0L
                 lastPos = pos
+                attempts = 0
+                if (statusText != null) statusText = null
+                continue
             }
-            if (buffering && !playing) {
-                if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
-                if (System.currentTimeMillis() - stalledSince >= WATCHDOG_STALL_THRESHOLD_MS) {
-                    statusText = "Перезапуск потока..."
-                    runCatching {
-                        player.seekToDefaultPosition()
-                        player.prepare()
-                        player.playWhenReady = true
-                    }
-                    stalledSince = 0L
-                    scope.launch { delay(2_000); statusText = null }
+
+            if (badSince == 0L) badSince = System.currentTimeMillis()
+            val badMs = System.currentTimeMillis() - badSince
+
+            if (badMs >= WATCHDOG_STALL_THRESHOLD_MS) {
+                attempts++
+                if (attempts > WATCHDOG_MAX_ATTEMPTS) {
+                    statusText = "Не удалось восстановить. Переключите канал."
+                    break
                 }
+                statusText = "Перезапуск потока ($attempts/$WATCHDOG_MAX_ATTEMPTS)..."
+                runCatching {
+                    player.seekToDefaultPosition()
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                badSince = 0L
+                lastPos = -1L
             }
         }
     }
 
-    // ---- Lifecycle ----
     DisposableEffect(player, lifecycleOwner, currentChannel.id) {
         if (player == null) return@DisposableEffect onDispose { }
         val observer = LifecycleEventObserver { _, event ->
@@ -307,7 +302,7 @@ fun PlayerScreen(onBack: () -> Unit) {
             retryCount = 0
             statusText = null
             userPaused = false
-            lastPausedAt = 0L
+            lastPausedAt = System.currentTimeMillis()
             switchHint = "${index + 1}/${list.size} · ${currentChannel.title.ifBlank { currentChannel.id }}"
             showOsd = true
         }
@@ -375,7 +370,6 @@ fun PlayerScreen(onBack: () -> Unit) {
                     PlayerView(c).apply {
                         useController = false
                         keepScreenOn = true
-                        // без индикатора буферизации — при провале картинка замирает и продолжает
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
