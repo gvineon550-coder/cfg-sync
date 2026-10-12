@@ -1,5 +1,7 @@
 package com.nova.sync.ui
 
+import android.content.Context
+import android.os.PowerManager
 import android.view.ViewGroup
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -25,8 +27,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,13 +44,19 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -56,11 +66,18 @@ import com.nova.sync.data.Repository
 import com.nova.sync.data.Resolver
 import com.nova.sync.player.PlayerHolder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val STALE_POSITION_THRESHOLD_MS = 60 * 1000L
+private const val WATCHDOG_INTERVAL_MS = 2_000L
+private const val WATCHDOG_STALL_THRESHOLD_MS = 10_000L
 
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(onBack: () -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val list = remember { Repository.channels() }
     val initial = PlayerHolder.current
 
@@ -76,6 +93,19 @@ fun PlayerScreen(onBack: () -> Unit) {
 
     var resolvedUrl by remember(currentChannel.id) { mutableStateOf(currentChannel.streamUrl) }
     var resolveError by remember(currentChannel.id) { mutableStateOf<String?>(null) }
+    var retryCount by remember(currentChannel.id) { mutableIntStateOf(0) }
+    var statusText by remember(currentChannel.id) { mutableStateOf<String?>(null) }
+    var userPaused by remember(currentChannel.id) { mutableStateOf(false) }
+    var lastPausedAt by remember { mutableLongStateOf(0L) }
+    var watchdogRecoveries by remember(currentChannel.id) { mutableIntStateOf(0) }
+
+    val wakeLock = remember {
+        val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+        pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "nova:playback"
+        ).apply { setReferenceCounted(false) }
+    }
 
     LaunchedEffect(currentChannel.id) {
         PlayerHolder.current = currentChannel
@@ -96,8 +126,16 @@ fun PlayerScreen(onBack: () -> Unit) {
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000)
+
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(30_000, 60_000, 1_000, 2_000)
+                .setTargetBufferBytes(C.LENGTH_UNSET)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+
             ExoPlayer.Builder(ctx)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+                .setLoadControl(loadControl)
                 .build()
                 .apply {
                     setWakeMode(C.WAKE_MODE_NETWORK)
@@ -108,8 +146,138 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
     }
 
-    DisposableEffect(player) {
-        onDispose { player?.release() }
+    DisposableEffect(player, wakeLock) {
+        if (player == null) return@DisposableEffect onDispose { }
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                if (userPaused) return
+                if (retryCount < 5) {
+                    retryCount++
+                    statusText = "Переподключение ($retryCount/5)..."
+                    scope.launch {
+                        delay(2_000)
+                        runCatching {
+                            player.seekToDefaultPosition()
+                            player.prepare()
+                            player.playWhenReady = true
+                        }
+                    }
+                } else {
+                    statusText = "Не удалось переподключиться. Переключите канал."
+                    runCatching { if (wakeLock.isHeld) wakeLock.release() }
+                }
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) {
+                    retryCount = 0
+                    statusText = null
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    if (!wakeLock.isHeld) {
+                        runCatching { wakeLock.acquire(6 * 60 * 60 * 1000L) }
+                    }
+                } else {
+                    if (wakeLock.isHeld) runCatching { wakeLock.release() }
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+            runCatching { if (wakeLock.isHeld) wakeLock.release() }
+        }
+    }
+
+    // ---- WATCHDOG: ловит тихие фризы без onPlayerError ----
+    LaunchedEffect(player, currentChannel.id) {
+        if (player == null) return@LaunchedEffect
+        var lastPos = -1L
+        var stalledSince = 0L
+        while (true) {
+            delay(WATCHDOG_INTERVAL_MS)
+            if (userPaused) {
+                stalledSince = 0L
+                lastPos = -1L
+                continue
+            }
+            val playing = player.isPlaying
+            val buffering = player.playbackState == Player.STATE_BUFFERING
+            val pos = player.currentPosition
+
+            if (playing && pos == lastPos) {
+                if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
+                val stallMs = System.currentTimeMillis() - stalledSince
+                if (stallMs >= WATCHDOG_STALL_THRESHOLD_MS) {
+                    watchdogRecoveries++
+                    statusText = "Перезапуск потока..."
+                    runCatching {
+                        player.seekToDefaultPosition()
+                        player.prepare()
+                        player.playWhenReady = true
+                    }
+                    stalledSince = 0L
+                    lastPos = -1L
+                    scope.launch {
+                        delay(2_000)
+                        statusText = null
+                    }
+                }
+            } else {
+                stalledSince = 0L
+                lastPos = pos
+            }
+            // если долго буферизуется — тоже лечим
+            if (buffering && !playing) {
+                if (stalledSince == 0L) stalledSince = System.currentTimeMillis()
+                if (System.currentTimeMillis() - stalledSince >= WATCHDOG_STALL_THRESHOLD_MS) {
+                    statusText = "Перезапуск потока..."
+                    runCatching {
+                        player.seekToDefaultPosition()
+                        player.prepare()
+                        player.playWhenReady = true
+                    }
+                    stalledSince = 0L
+                    scope.launch {
+                        delay(2_000)
+                        statusText = null
+                    }
+                }
+            }
+        }
+    }
+
+    DisposableEffect(player, lifecycleOwner, currentChannel.id) {
+        if (player == null) return@DisposableEffect onDispose { }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    lastPausedAt = System.currentTimeMillis()
+                    runCatching { player.pause() }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    val elapsed = System.currentTimeMillis() - lastPausedAt
+                    if (elapsed > STALE_POSITION_THRESHOLD_MS) {
+                        statusText = "Синхронизация с эфиром..."
+                        runCatching {
+                            player.seekToDefaultPosition()
+                            player.play()
+                        }
+                        scope.launch { delay(1500); statusText = null }
+                    } else {
+                        if (!userPaused) runCatching { player.play() }
+                    }
+                }
+                Lifecycle.Event.ON_STOP -> runCatching { player.pause() }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var showOsd by remember { mutableStateOf(true) }
@@ -118,17 +286,10 @@ fun PlayerScreen(onBack: () -> Unit) {
     var switchHint by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(showOsd, showListOverlay) {
-        if (showOsd && !showListOverlay) {
-            delay(4000)
-            showOsd = false
-        }
+        if (showOsd && !showListOverlay) { delay(4000); showOsd = false }
     }
-
     LaunchedEffect(switchHint) {
-        if (switchHint != null) {
-            delay(1500)
-            switchHint = null
-        }
+        if (switchHint != null) { delay(1500); switchHint = null }
     }
 
     fun switchTo(index: Int) {
@@ -137,6 +298,11 @@ fun PlayerScreen(onBack: () -> Unit) {
             currentChannel = list[index]
             resolvedUrl = currentChannel.streamUrl
             resolveError = null
+            retryCount = 0
+            statusText = null
+            userPaused = false
+            lastPausedAt = 0L
+            watchdogRecoveries = 0
             switchHint = "${index + 1}/${list.size} · ${currentChannel.title.ifBlank { currentChannel.id }}"
             showOsd = true
         }
@@ -162,30 +328,22 @@ fun PlayerScreen(onBack: () -> Unit) {
                     }
                     Key.DirectionUp, Key.DirectionLeft -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if (showListOverlay) {
-                            if (overlayIndex > 0) overlayIndex--
-                        } else {
-                            if (currentIndex > 0) switchTo(currentIndex - 1)
-                        }
+                        if (showListOverlay) { if (overlayIndex > 0) overlayIndex-- }
+                        else { if (currentIndex > 0) switchTo(currentIndex - 1) }
                         true
                     }
                     Key.DirectionDown, Key.DirectionRight -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if (showListOverlay) {
-                            if (overlayIndex < list.size - 1) overlayIndex++
-                        } else {
-                            if (currentIndex < list.size - 1) switchTo(currentIndex + 1)
-                        }
+                        if (showListOverlay) { if (overlayIndex < list.size - 1) overlayIndex++ }
+                        else { if (currentIndex < list.size - 1) switchTo(currentIndex + 1) }
                         true
                     }
                     Key.DirectionCenter, Key.Enter, Key.Spacebar -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         if (showListOverlay) {
-                            switchTo(overlayIndex)
-                            showListOverlay = false
+                            switchTo(overlayIndex); showListOverlay = false
                         } else {
-                            showListOverlay = true
-                            overlayIndex = currentIndex
+                            showListOverlay = true; overlayIndex = currentIndex
                         }
                         true
                     }
@@ -197,6 +355,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                     Key.MediaPlayPause -> {
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         player?.let {
+                            userPaused = it.playWhenReady
                             it.playWhenReady = !it.playWhenReady
                         }
                         true
@@ -227,6 +386,18 @@ fun PlayerScreen(onBack: () -> Unit) {
             }
         }
 
+        if (statusText != null && !showListOverlay) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color(0xCC000000), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 24.dp, vertical = 14.dp)
+            ) {
+                Text(statusText!!, color = Color.White,
+                    style = MaterialTheme.typography.titleMedium)
+            }
+        }
+
         if (showOsd && !showListOverlay) {
             Box(
                 modifier = Modifier
@@ -243,7 +414,7 @@ fun PlayerScreen(onBack: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "OK — список каналов · ↑↓ ←→ — переключить · ≡ — список · Back — выход",
+                        "OK — список · ↑↓ ←→ — переключить · Back — выход",
                         color = Color(0xFFB8C4D8),
                     )
                 }
@@ -263,11 +434,7 @@ fun PlayerScreen(onBack: () -> Unit) {
         }
 
         if (showListOverlay) {
-            ChannelListOverlay(
-                list = list,
-                selectedIndex = overlayIndex,
-                currentIndex = currentIndex,
-            )
+            ChannelListOverlay(list = list, selectedIndex = overlayIndex, currentIndex = currentIndex)
         }
     }
 }
